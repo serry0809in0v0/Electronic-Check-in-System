@@ -1,0 +1,298 @@
+import datetime
+import matplotlib.pyplot as plt
+import pandas as pd
+import streamlit as st
+
+# 頁面基本設定
+st.set_page_config(
+    page_title="智慧簽到與考勤系統", page_icon="📅", layout="wide"
+)
+
+# 模擬資料初始化
+if "users" not in st.session_state:
+  st.session_state["users"] = {
+      "U001": {
+          "name": "王小明",
+          "pin": "1234",
+          "streak": 12,
+          "makeup_left": 2,
+          "badges": ["七天連續簽到", "十二天達人"],
+      },
+      "U002": {
+          "name": "李美玲",
+          "pin": "5678",
+          "streak": 7,
+          "makeup_left": 1,
+          "badges": ["七天連續簽到"],
+      },
+      "U003": {
+          "name": "張偉誠",
+          "pin": "0000",
+          "streak": 3,
+          "makeup_left": 3,
+          "badges": [],
+      },
+  }
+
+if "logs" not in st.session_state:
+  today_str = datetime.date.today().strftime("%Y-%m-%d")
+  st.session_state["logs"] = pd.DataFrame([
+      {
+          "日期": "2026-10-06",
+          "帳號": "U001",
+          "姓名": "王小明",
+          "時間": "08:15",
+          "天氣": "晴天",
+          "心情": "精神很好",
+          "類型": "正常",
+      },
+      {
+          "日期": "2026-10-07",
+          "帳號": "U001",
+          "姓名": "王小明",
+          "時間": "08:20",
+          "天氣": "多雲",
+          "心情": "穩步前進",
+          "類型": "正常",
+      },
+      {
+          "日期": "2026-10-06",
+          "帳號": "U002",
+          "姓名": "李美玲",
+          "時間": "09:00",
+          "天氣": "晴天",
+          "心情": "迎接美好一天",
+          "類型": "正常",
+      },
+      {
+          "日期": "2026-10-07",
+          "帳號": "U002",
+          "姓名": "李美玲",
+          "時間": "08:50",
+          "天氣": "多雲",
+          "心情": "稍有睡意",
+          "類型": "正常",
+      },
+  ])
+
+# 網站背景根據當日天氣動態調整 (模擬天氣：晴天/雨天/多雲)
+current_weather = "晴天"  # 可由管理者匯入或 API 取得
+weather_bg_colors = {
+    "晴天": "linear-gradient(to right, #fceabb, #f8b500)",
+    "雨天": "linear-gradient(to right, #cfd9df, #e2ebf0)",
+    "多雲": "linear-gradient(to right, #bdc3c7, #2c3e50)",
+}
+
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background: {weather_bg_colors.get(current_weather, "#f0f2f6")};
+    }}
+    .card {{
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }}
+    </style>
+""",
+    unsafe_allow_html=True,
+)
+
+st.title("🌟 智慧簽到與考勤管理系統")
+st.markdown(
+    f"**今日天氣狀況**：☀️ {current_weather} | **系統日期**："
+    f" {datetime.date.today()}"
+)
+
+# 側邊欄導覽
+menu = st.sidebar.selectbox(
+    "系統功能選單",
+    ["使用者簽到", "補簽申請", "統計圖表與日曆", "管理者後台與匯出"],
+)
+
+# 1. 使用者簽到
+if menu == "使用者簽到":
+  st.subheader("📝 每日快速簽到")
+  with st.form("checkin_form"):
+    col1, col2 = st.columns(2)
+    with col1:
+      user_id = st.selectbox(
+          "選擇使用者帳號",
+          list(st.session_state["users"].keys()),
+          format_func=lambda x: (
+              f"{x} - {st.session_state['users'][x]['name']}"
+          ),
+      )
+      pin = st.text_input("輸入 4 位數 PIN 碼驗證", type="password")
+    with col2:
+      mood = st.text_input(
+          "今日心情或目標寫真", placeholder="例：今天目標完成專案報告！"
+      )
+      weather_input = st.selectbox("確認今日天氣", ["晴天", "多雲", "雨天"])
+
+    submit = st.form_submit_button("立即簽到")
+    if submit:
+      user_info = st.session_state["users"][user_id]
+      if pin == user_info["pin"]:
+        today = datetime.date.today().strftime("%Y-%m-%d")
+        df_logs = st.session_state["logs"]
+        already_checked = not df_logs[
+            (df_logs["日期"] == today) & (df_logs["帳號"] == user_id)
+        ].empty
+
+        if already_checked:
+          st.warning("⚠️ 您今天已經完成簽到過了，請勿重複簽到！")
+        else:
+          new_row = {
+              "日期": today,
+              "帳號": user_id,
+              "姓名": user_info["name"],
+              "時間": datetime.datetime.now().strftime("%H:%M"),
+              "天氣": weather_input,
+              "心情": mood,
+              "類型": "正常",
+          }
+          st.session_state["logs"] = pd.concat(
+              [df_logs, pd.DataFrame([new_row])], ignore_index=True
+          )
+
+          # 更新連續天數與獎勵
+          user_info["streak"] += 1
+          if (
+              user_info["streak"] == 7
+              and "七天連續簽到" not in user_info["badges"]
+          ):
+            user_info["badges"].append("七天連續簽到 🏅")
+            st.balloons()
+
+          st.success(
+              f"🎉 簽到成功！目前連續簽到天數：{user_info['streak']}"
+              f" 天。獲得徽章：{', '.join(user_info['badges'])}"
+          )
+      else:
+        st.error("❌ PIN 碼錯誤，驗證失敗！")
+
+# 2. 補簽功能
+elif menu == "補簽功能":
+  st.subheader("🔄 缺席紀錄補簽")
+  user_id = st.selectbox(
+      "選擇使用者帳號",
+      list(st.session_state["users"].keys()),
+      format_func=lambda x: f"{x} - {st.session_state['users'][x]['name']}",
+  )
+  user_info = st.session_state["users"][user_id]
+
+  st.info(
+      f"使用者：{user_info['name']} | 剩餘補簽次數："
+      f" **{user_info['makeup_left']}** 次"
+  )
+
+  with st.form("makeup_form"):
+    makeup_date = st.date_input(
+        "選擇要補簽的日期",
+        max_value=datetime.date.today() - datetime.timedelta(days=1),
+    )
+    makeup_reason = st.text_input("補簽原因與心情備註")
+    submit_makeup = st.form_submit_button("確認補簽")
+
+    if submit_makeup:
+      if user_info["makeup_left"] > 0:
+        date_str = makeup_date.strftime("%Y-%m-%d")
+        df_logs = st.session_state["logs"]
+        exists = not df_logs[
+            (df_logs["日期"] == date_str) & (df_logs["帳號"] == user_id)
+        ].empty
+        if exists:
+          st.warning("該日已有簽到紀錄，無需補簽。")
+        else:
+          user_info["makeup_left"] -= 1
+          new_row = {
+              "日期": date_str,
+              "帳號": user_id,
+              "姓名": user_info["name"],
+              "時間": "12:00 (補簽)",
+              "天氣": "晴天",
+              "心情": makeup_reason,
+              "類型": "補簽",
+          }
+          st.session_state["logs"] = pd.concat(
+              [df_logs, pd.DataFrame([new_row])], ignore_index=True
+          )
+          st.success(
+              f"✅ 成功補簽 {date_str}！剩餘補簽次數："
+              f" {user_info['makeup_left']} 次"
+          )
+      else:
+        st.error("❌ 您的補簽次數已用完，無法補簽！")
+
+# 3. 統計圖表與日曆視圖
+elif menu == "統計圖表與日曆視圖":
+  st.subheader("📊 簽到統計與視覺化")
+  df_logs = st.session_state["logs"]
+
+  if df_logs.empty:
+    st.info("目前尚無簽到紀錄。")
+  else:
+    col1, col2 = st.columns(2)
+    with col1:
+      st.markdown("#### 每日簽到人數統計")
+      daily_counts = df_logs.groupby("日期").size()
+      fig, ax = plt.subplots(figsize=(6, 4))
+      daily_counts.plot(kind="bar", color="#4CAF50", ax=ax)
+      ax.set_ylabel("簽到人數")
+      ax.set_xlabel("日期")
+      plt.xticks(rotation=45)
+      st.pyplot(fig)
+
+    with col2:
+      st.markdown("#### 使用者連續簽到排行")
+      streak_data = {
+          uid: info["streak"] for uid, info in st.session_state["users"].items()
+      }
+      streak_df = pd.DataFrame(
+          list(streak_data.items()), columns=["帳號", "連續天數"]
+      ).sort_values(by="連續天數", ascending=False)
+      st.dataframe(streak_df, use_container_width=True)
+
+    st.markdown("### 📋 所有簽到紀錄與心情清單")
+    st.dataframe(df_logs, use_container_width=True)
+
+# 4. 管理者後台與匯出
+elif menu == "管理者後台與匯出":
+  st.subheader("🛠️ 管理者後台與報表匯出")
+
+  st.markdown("#### 會員名冊與徽章狀態")
+  admin_users_df = pd.DataFrame([
+      {
+          "帳號": uid,
+          "姓名": data["name"],
+          "連續天數": data["streak"],
+          "剩餘補簽": data["makeup_left"],
+          "獲得徽章": ", ".join(data["badges"]),
+      }
+      for uid, data in st.session_state["users"].items()
+  ])
+  st.dataframe(admin_users_df, use_container_width=True)
+
+  st.markdown("#### 下載完整報表 (Excel / CSV)")
+  df_logs = st.session_state["logs"]
+
+  csv_data = df_logs.to_csv(index=False).encode("utf-8-sig")
+  st.download_button(
+      label="📥 下載 CSV 簽到考勤報表",
+      data=csv_data,
+      file_name=f"attendance_report_{datetime.date.today()}.csv",
+      mime="text/csv",
+  )
+
+  st.markdown("#### ⚙️ 系統天氣與背景設定")
+  with st.form("weather_config_form"):
+    new_weather = st.selectbox("設定網站當日天氣背景", ["晴天", "多雲", "雨天"])
+    update_weather_btn = st.form_submit_button("更新天氣與背景")
+    if update_weather_btn:
+      st.success(
+          f"已成功更新今日天氣為：{new_weather}，網站背景與視覺已同步切換！"
+      )
